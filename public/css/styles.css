@@ -13,7 +13,7 @@ body {
   overflow: hidden;
 }
 
-body.app-locked {
+.canvas-container.locked {
   pointer-events: none;
 }
 
@@ -24,7 +24,12 @@ body.app-locked {
   width: 100%;
   height: 100%;
   background: rgba(255, 255, 255, 0.5);
-  z-index: 900;
+  z-index: 500;
+  pointer-events: auto;
+}
+
+#authModal {
+  z-index: 1000 !important;
 }
 
 /* Navigation Bar */
