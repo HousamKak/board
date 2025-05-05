@@ -137,6 +137,17 @@ class CollaborationApp {
     if (!boardId) return;
 
     try {
+      // Clear the canvas before loading new board
+      const canvas = window.canvasManager?.getCanvas();
+      if (canvas) {
+        canvas.clear();
+        canvas.backgroundColor = '#ffffff'; // Reset background
+        canvas.renderAll();
+      }
+      
+      // Clear elements map
+      window.canvasManager?.elements.clear();
+      
       const response = await fetch(`/api/boards/${boardId}`, {
         headers: {
           Authorization: `Bearer ${window.authManager.getToken()}`
@@ -150,8 +161,10 @@ class CollaborationApp {
         // Join board via socket
         window.socketManager.joinBoard(boardId);
         
-        // Update canvas with board elements
-        window.canvasManager.loadElements(board.elements || []);
+        // Load only elements that belong to this board
+        if (board.elements) {
+          window.canvasManager.loadElements(board.elements);
+        }
       } else {
         throw new Error('Failed to load board');
       }
