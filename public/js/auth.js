@@ -18,6 +18,7 @@ class AuthManager {
       this.logoutBtn = document.getElementById('logoutBtn');
       
       this.initializeEventListeners();
+      this.lockApplication(); // Lock the app initially
     }
   
     /**
@@ -35,6 +36,53 @@ class AuthManager {
       
       // Logout
       this.logoutBtn.addEventListener('click', () => this.logout());
+      
+      // Prevent closing auth modal without authentication
+      window.addEventListener('click', (e) => {
+        if (e.target === this.authModal && !this.isAuthenticated()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }
+      });
+      
+      this.authModal.addEventListener('click', (e) => {
+        if (e.target === this.authModal && !this.isAuthenticated()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return false;
+        }
+      });
+    }
+  
+    /**
+     * Lock the application until authenticated
+     */
+    lockApplication() {
+      document.body.classList.add('app-locked');
+      // Prevent any interaction with the main app
+      const appOverlay = document.createElement('div');
+      appOverlay.className = 'app-overlay';
+      appOverlay.id = 'appOverlay';
+      document.body.appendChild(appOverlay);
+      
+      // Ensure only auth modal is visible
+      document.querySelectorAll('.modal').forEach(modal => {
+        if (modal.id !== 'authModal') {
+          modal.style.display = 'none';
+        }
+      });
+    }
+  
+    /**
+     * Unlock the application after authentication
+     */
+    unlockApplication() {
+      document.body.classList.remove('app-locked');
+      const appOverlay = document.getElementById('appOverlay');
+      if (appOverlay) {
+        appOverlay.remove();
+      }
     }
   
     /**
@@ -86,6 +134,7 @@ class AuthManager {
           localStorage.setItem('token', this.token);
           this.showUserInfo();
           this.hideAuthModal();
+          this.unlockApplication();
           window.app.initialize(); // Initialize the main app
         } else {
           throw new Error(data.error || 'Login failed');
@@ -129,6 +178,7 @@ class AuthManager {
           localStorage.setItem('token', this.token);
           this.showUserInfo();
           this.hideAuthModal();
+          this.unlockApplication();
           window.app.initialize(); // Initialize the main app
         } else {
           throw new Error(data.error || 'Registration failed');
@@ -148,6 +198,7 @@ class AuthManager {
       localStorage.removeItem('token');
       this.hideUserInfo();
       this.showAuthModal();
+      this.lockApplication();
       window.app.disconnect(); // Disconnect from the board
     }
   
@@ -221,6 +272,7 @@ class AuthManager {
             // Token is valid, fetch user info
             this.user = await this.fetchUserInfo();
             this.showUserInfo();
+            this.unlockApplication();
           } else {
             // Token is invalid, logout
             this.logout();
