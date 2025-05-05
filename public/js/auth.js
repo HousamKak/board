@@ -8,7 +8,7 @@ class AuthManager {
    * Create an AuthManager instance
    */
   constructor() {
-    this.token = localStorage.getItem('token');
+    this.token = null;
     this.user = null;
     this.authModal = document.getElementById('authModal');
     this.loginForm = document.getElementById('loginForm');
@@ -18,6 +18,7 @@ class AuthManager {
     this.logoutBtn = document.getElementById('logoutBtn');
     
     this.initializeEventListeners();
+    this.initializeToken(); // Initialize token from storage or session
     this.lockApplication(); // Lock the app initially
   }
 
@@ -53,6 +54,54 @@ class AuthManager {
         return false;
       }
     });
+  }
+
+  /**
+   * Initialize token from storage or session
+   */
+  initializeToken() {
+    this.token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    if (!this.token) {
+      this.checkServerSession();
+    }
+  }
+
+  /**
+   * Check if server has a valid session
+   */
+  async checkServerSession() {
+    try {
+      const response = await fetch('/api/session', {
+        credentials: 'include' // Important for sending session cookie
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.token) {
+          this.token = data.token;
+          this.user = data.user;
+          this.persistToken();
+          this.showUserInfo();
+          this.unlockApplication();
+        }
+      }
+    } catch (error) {
+      console.error('Session check error:', error);
+    }
+  }
+
+  /**
+   * Persist token in both local and session storage
+   * @param {boolean} remember - Whether to remember login
+   */
+  persistToken(remember = true) {
+    if (this.token) {
+      if (remember) {
+        localStorage.setItem('token', this.token);
+      } else {
+        sessionStorage.setItem('token', this.token);
+      }
+    }
   }
 
   /**
@@ -119,10 +168,11 @@ class AuthManager {
    */
   async handleLogin(e) {
     e.preventDefault();
-    
+
     const email = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;
-    
+    const remember = document.getElementById('rememberMe')?.checked ?? true;
+
     if (!email || !password) {
       alert('Please fill in all fields');
       return;
@@ -142,7 +192,7 @@ class AuthManager {
       if (response.ok) {
         this.token = data.token;
         this.user = data.user;
-        localStorage.setItem('token', this.token);
+        this.persistToken(remember);
         this.showUserInfo();
         this.hideAuthModal();
         this.unlockApplication();
@@ -207,6 +257,7 @@ class AuthManager {
     this.token = null;
     this.user = null;
     localStorage.removeItem('token');
+    sessionStorage.removeItem('token');
     this.hideUserInfo();
     this.showAuthModal();
     this.lockApplication();
@@ -328,5 +379,58 @@ class AuthManager {
   }
 }
 
-// Create global auth manager instance
-window.authManager = new AuthManager();
+// Wrap AuthManager initialization in DOMContentLoaded
+window.addEventListener('DOMContentLoaded', () => {
+    window.authManager = new AuthManager();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    const loginForm = document.getElementById('login-form');
+    if (!loginForm) {
+        console.error('Login form not found in the DOM.');
+        return;
+    }
+
+    const errorMessage = document.getElementById('error-message');
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ username, password }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('authToken', data.token);
+                window.location.href = 'index.html'; // Redirect to main app
+            } else {
+                const errorData = await response.json();
+                errorMessage.textContent = errorData.message || 'Login failed. Please try again.';
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            errorMessage.textContent = 'An error occurred. Please try again later.';
+        }
+    });
+
+    // Check if already authenticated
+    const token = localStorage.getItem('authToken');
+    if (token) {
+        window.location.href = 'index.html'; // Redirect if already logged in
+    }
+});
+
+// Moved inline script to external file
+const token = localStorage.getItem('authToken');
+if (!token) {
+    window.location.href = 'auth.html';
+}

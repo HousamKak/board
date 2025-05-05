@@ -393,15 +393,13 @@ class CollaborationApp {
 // Create and start the application
 window.addEventListener('DOMContentLoaded', () => {
   window.app = new CollaborationApp();
-  
-  // Wait for authentication before initializing the app
+
   if (window.authManager.isAuthenticated()) {
     window.app.initialize();
   } else {
-    // Wait for authentication
     const authCheck = setInterval(() => {
       if (window.authManager.isAuthenticated()) {
-        clearInterval(authCheck);
+        clearInterval(authCheck); // Stop the interval
         window.app.initialize();
       }
     }, 100);
@@ -537,3 +535,26 @@ window.addEventListener('unhandledrejection', (event) => {
     })
   }).catch(logError => console.error('Failed to log rejection:', logError));
 });
+
+// Add global error handlers
+window.addEventListener('error', (event) => {
+    console.error('[GLOBAL] Application error:', event.error);
+    console.error('[GLOBAL] Event details:', event);
+    console.error('[GLOBAL] Stack trace:', event.error?.stack);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('[GLOBAL] Unhandled promise rejection:', event.reason);
+    console.error('[GLOBAL] Promise:', event.promise);
+});
+
+// Add a debugging utility
+window.debugSocketState = function() {
+    console.log('=== Socket Debug State ===');
+    console.log('Socket Manager exists:', !!window.socketManager);
+    console.log('Socket exists:', !!window.socketManager?.socket);
+    console.log('Socket connected:', window.socketManager?.isConnected());
+    console.log('Board ID:', window.socketManager?.boardId);
+    console.log('Current user:', window.authManager?.getCurrentUser());
+    console.log('========================');
+};

@@ -8,23 +8,50 @@ class SocketManager {
    * Create a SocketManager instance
    */
   constructor() {
+    console.log('[SOCKET] SocketManager initialized');
     this.socket = null;
     this.boardId = null;
     this.connected = false;
     this.cursorLayer = document.querySelector('.cursor-layer');
     this.userCursors = new Map();
     this.messageHandlers = new Map();
+    this.lastTextUpdate = new Map(); // Prevent duplicate updates
+    this.connectionAttempts = 0; // Track connection attempts
   }
 
   /**
-   * Connect to the Socket.IO server
+   * Connect with authentication
    */
   connect() {
+    console.log('[SOCKET] Attempting to connect to server...');
+    console.log('[SOCKET] Connection attempt #' + (++this.connectionAttempts));
+
     if (this.socket) {
       this.socket.disconnect();
     }
 
-    this.socket = io();
+    // Ensure token is available
+    let token = window.authManager.getToken();
+    if (!token) {
+      // Attempt to retrieve token from localStorage
+      token = localStorage.getItem('authToken');
+      if (token) {
+        console.log('Token retrieved from localStorage.');
+        window.authManager.setToken(token); // Update authManager with the token
+      }
+    }
+
+    if (!token) {
+      console.error('No authentication token found. Please log in.');
+      alert('Authentication required. Please log in.');
+      return;
+    }
+
+    // Connect with token for authentication
+    this.socket = io({
+      auth: { token }
+    });
+
     this.initializeSocketEvents();
   }
 
@@ -32,14 +59,19 @@ class SocketManager {
    * Initialize socket event listeners
    */
   initializeSocketEvents() {
+    console.log('[SOCKET] Initializing socket event listeners');
+
     this.socket.on('connect', () => {
-      console.log('Connected to server');
+      console.log('=== [SOCKET] Connected to server ===');
+      console.log('Socket ID:', this.socket.id);
+      console.log('Transport:', this.socket.io.engine.transport.name);
       this.connected = true;
       this.onConnectHandler();
     });
 
-    this.socket.on('disconnect', () => {
-      console.log('Disconnected from server');
+    this.socket.on('disconnect', (reason) => {
+      console.log('=== [SOCKET] Disconnected from server ===');
+      console.log('Reason:', reason);
       this.connected = false;
       this.clearUserCursors();
     });
@@ -97,6 +129,27 @@ class SocketManager {
         }
       }
     });
+
+    // Text updates from other users
+    this.socket.on('text-update', (data) => {
+      const { elementId, text, userId } = data;
+
+      // Skip if this is our own update (avoid echo)
+      const lastUpdate = this.lastTextUpdate.get(elementId);
+      if (lastUpdate && lastUpdate.text === text && 
+          lastUpdate.userId === window.authManager.getCurrentUser()?.userId) {
+        return;
+      }
+
+      this.lastTextUpdate.set(elementId, { text, userId });
+      this.triggerEvent('text-update', data);
+    });
+
+    // Mouse position updates from other users
+    this.socket.on('user-mouse-move', (data) => {
+      const { socketId, position, userId } = data;
+      this.updateUserCursor(socketId, position);
+    });
   }
 
   /**
@@ -125,6 +178,39 @@ class SocketManager {
     if (!this.socket || !this.boardId) return;
 
     this.socket.emit('cursor-move', {
+      boardId: this.boardId,
+      position: position
+    });
+  }
+
+  /**
+   * Emit text change event
+   * @param {string} boardId - Board ID
+   * @param {string} elementId - Element ID
+   * @param {string} text - New text content
+   */
+  emitTextChange(boardId, elementId, text) {
+    if (!this.socket || !this.boardId) return;
+
+    // Store our own update to prevent echo
+    const userId = window.authManager.getCurrentUser()?.userId;
+    this.lastTextUpdate.set(elementId, { text, userId });
+
+    this.socket.emit('text-change', {
+      boardId,
+      elementId,
+      text
+    });
+  }
+
+  /**
+   * Emit mouse movement
+   * @param {Object} position - Mouse position
+   */
+  emitMouseMove(position) {
+    if (!this.socket || !this.boardId) return;
+
+    this.socket.emit('mouse-move', {
       boardId: this.boardId,
       position: position
     });

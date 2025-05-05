@@ -24,6 +24,8 @@ class CanvasManager {
     
     this.initializeCanvas();
     this.initializeEventListeners();
+    this.setupTextEditingEvents();
+    this.setupMouseTracking();
   }
 
   /**
@@ -161,6 +163,75 @@ class CanvasManager {
     window.socketManager.on('element-updated', (element) => this.handleRemoteElementUpdated(element));
     window.socketManager.on('element-deleted', (elementId) => this.handleRemoteElementDeleted(elementId));
     window.socketManager.on('load-elements', (elements) => this.loadElements(elements));
+  }
+
+  /**
+   * Setup text editing event listeners
+   */
+  setupTextEditingEvents() {
+    // Listen for text changes on the canvas
+    this.canvas.on('text:changed', (options) => {
+      const target = options.target;
+      if (target && target.data?.id && target.type === 'textbox') {
+        this.handleTextChange(target);
+      }
+    });
+
+    // Handle remote text updates
+    window.socketManager.on('text-update', (data) => {
+      this.handleRemoteTextUpdate(data);
+    });
+  }
+
+  /**
+   * Handle text change locally
+   * @param {fabric.Textbox} textbox - Text element
+   */
+  handleTextChange(textbox) {
+    const elementId = textbox.data?.id;
+    if (!elementId) return;
+
+    // Debounce text change events
+    clearTimeout(this.textChangeTimeout);
+    this.textChangeTimeout = setTimeout(() => {
+      window.socketManager.emitTextChange(
+        this.currentBoard,
+        elementId,
+        textbox.text
+      );
+    }, 300);
+  }
+
+  /**
+   * Handle remote text updates
+   * @param {Object} data - Text update data
+   */
+  handleRemoteTextUpdate(data) {
+    const { elementId, text } = data;
+    const element = this.elements.get(elementId);
+
+    if (element && element.type === 'textbox') {
+      // Only update if text is different and element is not being edited
+      if (element.text !== text && !element.isEditing) {
+        element.text = text;
+        this.canvas.renderAll();
+      }
+    }
+  }
+
+  /**
+   * Setup mouse tracking
+   */
+  setupMouseTracking() {
+    this.canvas.on('mouse:move', (options) => {
+      const pointer = this.canvas.getPointer(options.e);
+
+      // Throttle mouse movement updates
+      clearTimeout(this.mouseTimeout);
+      this.mouseTimeout = setTimeout(() => {
+        window.socketManager.emitMouseMove(pointer);
+      }, 100); // Increased throttle delay to 100ms
+    });
   }
 
   /**

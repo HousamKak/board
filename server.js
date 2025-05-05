@@ -13,6 +13,11 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
+const session = require('express-session');
+const SQLiteStore = require('connect-sqlite3')(session);
+const sharedsession = require('express-socket.io-session');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 const db = require('./database');
@@ -56,6 +61,30 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-in-production';
 // Store active users per board
 const boardUsers = new Map();
 
+// Create session middleware
+const sessionMiddleware = session({
+    secret: process.env.SESSION_SECRET || 'your-session-secret',
+    resave: false,
+    saveUninitialized: false,
+    store: new SQLiteStore({
+        db: 'sessions.sqlite',
+        dir: './' // Store the SQLite database in the current directory
+    }),
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    }
+});
+
+// Use session middleware in Express
+app.use(sessionMiddleware);
+
+// Share session with Socket.IO
+io.use(sharedsession(sessionMiddleware, {
+    autoSave: true
+}));
+
 /**
  * Middleware to verify JWT token
  * @param {Object} req - Express request object
@@ -63,7 +92,7 @@ const boardUsers = new Map();
  * @param {Function} next - Express next middleware function
  */
 const authMiddleware = (req, res, next) => {
-    const token = req.headers.authorization?.split(' ')[1];
+    const token = req.headers.authorization?.split(' ')[1] || req.session.token;
 
     if (!token) {
         return res.status(401).json({ error: 'No token provided' });
@@ -72,11 +101,42 @@ const authMiddleware = (req, res, next) => {
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = decoded;
+
+        // Store token in session if not already stored
+        if (!req.session.token) {
+            req.session.token = token;
+        }
+
         next();
     } catch (error) {
         return res.status(401).json({ error: 'Invalid token' });
     }
 };
+
+// Logs directory
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir);
+}
+
+// POST /api/logs endpoint
+app.post('/api/logs', (req, res) => {
+    const { message, level } = req.body;
+    if (!message || !level) {
+        return res.status(400).json({ error: 'Message and level are required.' });
+    }
+
+    const logEntry = `${new Date().toISOString()} [${level.toUpperCase()}]: ${message}\n`;
+    const logFile = path.join(logsDir, 'application.log');
+
+    fs.appendFile(logFile, logEntry, (err) => {
+        if (err) {
+            console.error('Failed to write log:', err);
+            return res.status(500).json({ error: 'Failed to write log.' });
+        }
+        res.status(201).json({ message: 'Log entry created.' });
+    });
+});
 
 // API Routes
 
@@ -273,8 +333,30 @@ app.get('/api/boards/:boardId', authMiddleware, async (req, res) => {
 });
 
 // Socket.IO event handling
+console.log('[SERVER] Socket.IO server initialized');
+
 io.on('connection', (socket) => {
-    console.log('New client connected:', socket.id);
+    console.log('=== [SERVER] New client connected ===');
+    console.log('Socket ID:', socket.id);
+    console.log('Handshake:', socket.handshake.headers);
+    console.log('Query params:', socket.handshake.query);
+    console.log('=====================');
+
+    const token = socket.handshake.auth?.token || socket.handshake.session?.token;
+    if (!token) {
+        socket.emit('error', { message: 'Authentication required' });
+        socket.disconnect();
+        return;
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        socket.handshake.user = decoded; // Attach user info to the handshake
+    } catch (error) {
+        socket.emit('error', { message: 'Invalid authentication token' });
+        socket.disconnect();
+        return;
+    }
 
     /**
      * Handle board join event
@@ -283,54 +365,59 @@ io.on('connection', (socket) => {
      * @param {Object} data.user - User information
      */
     socket.on('join-board', async (data) => {
+        console.log('[SERVER] Join board request:', data);
         try {
             const { boardId, user } = data;
-
+            console.log(`[SERVER] Checking access for user ${user.userId} to board ${boardId}`);
             if (!boardId || !user) {
+                console.error('[SERVER] Missing required data:', { boardId, user });
                 throw new Error('Missing required data');
             }
 
-            // Check if user has access to the board
             const hasAccess = await db.checkBoardAccess(boardId, user.userId);
+            console.log(`[SERVER] Access check result: ${hasAccess}`);
             if (!hasAccess) {
+                console.error(`[SERVER] Access denied for user ${user.userId} to board ${boardId}`);
                 socket.emit('error', { message: 'You do not have access to this board' });
                 return;
             }
 
             socket.join(boardId);
+            console.log(`[SERVER] User ${user.userId} joined board ${boardId}`);
 
-            // Store user for this board
             if (!boardUsers.has(boardId)) {
                 boardUsers.set(boardId, new Map());
             }
+            const userColor = getRandomColor();
             boardUsers.get(boardId).set(socket.id, {
                 userId: user.userId,
                 name: user.name,
-                color: getRandomColor()
+                color: userColor
             });
+            console.log('[SERVER] Board users:', boardUsers.get(boardId));
 
-            // Notify others about new user
             socket.to(boardId).emit('user-joined', {
                 socketId: socket.id,
                 user: {
                     userId: user.userId,
                     name: user.name,
-                    color: boardUsers.get(boardId).get(socket.id).color
+                    color: userColor
                 }
             });
+            console.log(`[SERVER] Notified others about new user in board ${boardId}`);
 
-            // Send current users to new joiner
             const currentUsers = Array.from(boardUsers.get(boardId).entries()).map(([id, userData]) => ({
                 socketId: id,
                 user: userData
             }));
             socket.emit('current-users', currentUsers);
+            console.log(`[SERVER] Sent current users to new joiner:`, currentUsers);
 
-            // Load board elements
             const elements = await db.getBoardElements(boardId);
             socket.emit('load-elements', elements);
+            console.log(`[SERVER] Sent ${elements.length} elements to user`);
         } catch (error) {
-            console.error('Join board error:', error);
+            console.error('[SERVER] Join board error:', error);
             socket.emit('error', { message: 'Failed to join board' });
         }
     });
@@ -427,20 +514,67 @@ io.on('connection', (socket) => {
     });
 
     /**
+     * Handle text change event
+     * @param {Object} data - Text change data
+     */
+    socket.on('text-change', (data) => {
+        try {
+            const { boardId, elementId, text } = data;
+
+            if (!boardId || !elementId || text === undefined) {
+                throw new Error('Missing required data');
+            }
+
+            socket.to(boardId).emit('text-update', {
+                elementId,
+                text,
+                userId: socket.handshake.session.userId
+            });
+        } catch (error) {
+            console.error('Text change error:', error);
+            socket.emit('error', { message: 'Failed to process text change' });
+        }
+    });
+
+    /**
+     * Handle mouse move event
+     * @param {Object} data - Mouse move data
+     */
+    socket.on('mouse-move', (data) => {
+        try {
+            const { boardId, position } = data;
+
+            if (!boardId || !position) {
+                throw new Error('Missing required data');
+            }
+
+            socket.to(boardId).emit('user-mouse-move', {
+                socketId: socket.id,
+                position,
+                userId: socket.handshake.session.userId
+            });
+        } catch (error) {
+            console.error('Mouse move error:', error);
+        }
+    });
+
+    /**
      * Handle disconnect event
      */
     socket.on('disconnect', () => {
-        console.log('Client disconnected:', socket.id);
+        console.log('=== [SERVER] Client disconnected ===');
+        console.log('Socket ID:', socket.id);
+        console.log('================================');
 
-        // Remove user from all boards
         for (const [boardId, users] of boardUsers) {
             if (users.has(socket.id)) {
                 users.delete(socket.id);
                 io.to(boardId).emit('user-left', socket.id);
+                console.log(`[SERVER] User left board ${boardId}`);
 
-                // Clean up empty boards
                 if (users.size === 0) {
                     boardUsers.delete(boardId);
+                    console.log(`[SERVER] Removed empty board ${boardId}`);
                 }
             }
         }

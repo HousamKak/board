@@ -132,10 +132,9 @@ body {
   transform: none;
 }
 
+/* Styles for user-info */
 .user-info {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  display: none;
 }
 
 #userName {
@@ -459,11 +458,23 @@ body {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
+/* Styles for form-actions */
+.form-actions {
+  flex-direction: column;
+  gap: 16px;
+}
+
 .form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
+}
+
+/* Styles for buttons */
+.submit-btn,
+.cancel-btn {
+  width: 100%;
 }
 
 .submit-btn {
@@ -501,6 +512,16 @@ body {
 
 .cancel-btn:hover {
   background-color: #e5e7eb;
+}
+
+/* Styles for register form */
+.auth-form#registerForm {
+  display: none;
+}
+
+/* Margin for paragraph */
+.board-selection-description {
+  margin-bottom: 24px;
 }
 
 /* Color Picker */
