@@ -22,6 +22,8 @@
                     <option value="">Select Board</option>
                 </select>
                 <button id="newBoardBtn" disabled>New Board</button>
+                <button id="inviteUserBtn" disabled>Invite User</button>
+                <button id="deleteBoardBtn" disabled class="cancel-btn">Delete Board</button>
             </div>
         </div>
         
@@ -38,7 +40,7 @@
         <div class="tool-group">
             <button class="tool-btn active" data-tool="select" title="Select">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                    <path d="M3 3l7 7v7l3-3V10l7-7z" fill="currentColor"/>
+                    <path d="M3 3l7.071 7.071L10 14h2.929l4.243-4.243c.39-.39.39-1.024 0-1.414l-7.071-7.071c-.39-.39-1.024-.39-1.414 0l-7.071 7.071c-.39.39-.39 1.024 0 1.414z" fill="currentColor"/>
                 </svg>
             </button>
             <button class="tool-btn" data-tool="pan" title="Pan & Navigate">
@@ -97,6 +99,43 @@
     </div>
 
     <!-- Modals -->
+    
+    <!-- Board Selection Modal -->
+    <div id="boardSelectionModal" class="modal">
+        <div class="modal-content">
+            <h2>Get Started with Collaboration Board</h2>
+            <p style="margin-bottom: 24px;">Choose an option to get started:</p>
+            
+            <div class="form-actions" style="flex-direction: column; gap: 16px;">
+                <button id="createFirstBoardBtn" class="submit-btn" style="width: 100%;">Create New Board</button>
+                <button id="useExistingBoardBtn" class="cancel-btn" style="width: 100%;">Use Existing Board</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Invite User Modal -->
+    <div id="inviteUserModal" class="modal">
+        <div class="modal-content">
+            <h2>Invite User to Board</h2>
+            <form id="inviteForm">
+                <div class="form-group">
+                    <label for="inviteEmail">Email</label>
+                    <input type="email" id="inviteEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="inviteRole">Role</label>
+                    <select id="inviteRole">
+                        <option value="editor">Editor</option>
+                        <option value="viewer">Viewer</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="cancel-btn" data-modal="inviteUserModal">Cancel</button>
+                    <button type="submit" class="submit-btn">Send Invitation</button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <!-- Login/Register Modal -->
     <div id="authModal" class="modal">

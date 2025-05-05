@@ -240,6 +240,12 @@ class AuthManager {
    */
   hideAuthModal() {
     this.authModal.style.display = 'none';
+    
+    // Hide board selection modal on logout
+    const boardSelectionModal = document.getElementById('boardSelectionModal');
+    if (boardSelectionModal) {
+      boardSelectionModal.style.display = 'none';
+    }
   }
 
   /**

@@ -15,6 +15,10 @@ class CollaborationApp {
     this.newBoardBtn = document.getElementById('newBoardBtn');
     this.boardModal = document.getElementById('boardModal');
     this.boardForm = document.getElementById('boardForm');
+    this.boardSelectionModal = document.getElementById('boardSelectionModal');
+    this.inviteUserModal = document.getElementById('inviteUserModal');
+    this.inviteUserBtn = document.getElementById('inviteUserBtn');
+    this.deleteBoardBtn = document.getElementById('deleteBoardBtn');
     
     this.initializeEventListeners();
   }
@@ -31,6 +35,25 @@ class CollaborationApp {
     
     // Board form submission
     this.boardForm.addEventListener('submit', (e) => this.createBoard(e));
+    
+    // Board selection modal buttons
+    document.getElementById('createFirstBoardBtn').addEventListener('click', () => {
+      this.boardSelectionModal.style.display = 'none';
+      this.showBoardModal();
+    });
+    
+    document.getElementById('useExistingBoardBtn').addEventListener('click', () => {
+      this.boardSelectionModal.style.display = 'none';
+    });
+    
+    // Invite user button
+    this.inviteUserBtn.addEventListener('click', () => this.showInviteModal());
+    
+    // Invite form submission
+    document.getElementById('inviteForm').addEventListener('submit', (e) => this.handleInviteUser(e));
+    
+    // Delete board button
+    this.deleteBoardBtn.addEventListener('click', () => this.deleteCurrentBoard());
   }
 
   /**
@@ -49,11 +72,17 @@ class CollaborationApp {
       // Enable controls
       this.enableControls();
       
-      // Create initial board if none exist
+      // Check if user has boards
       const boards = await this.getUserBoards();
       if (boards.length === 0) {
-        // Create "My First Board" automatically
-        await this.createBoard({ preventDefault: () => {} }, 'My First Board');
+        // Show board selection modal if no boards exist
+        this.boardSelectionModal.style.display = 'flex';
+      } else {
+        // Auto-select first board if available
+        if (boards.length > 0 && !this.currentBoard) {
+          this.boardSelect.value = boards[0].id;
+          this.loadBoard(boards[0].id);
+        }
       }
       
       this.isInitialized = true;
@@ -134,20 +163,13 @@ class CollaborationApp {
    * @param {string} boardId - Board ID
    */
   async loadBoard(boardId) {
-    if (!boardId) return;
+    if (!boardId) {
+      this.currentBoard = null;
+      this.updateBoardControls();
+      return;
+    }
 
     try {
-      // Clear the canvas before loading new board
-      const canvas = window.canvasManager?.getCanvas();
-      if (canvas) {
-        canvas.clear();
-        canvas.backgroundColor = '#ffffff'; // Reset background
-        canvas.renderAll();
-      }
-      
-      // Clear elements map
-      window.canvasManager?.elements.clear();
-      
       const response = await fetch(`/api/boards/${boardId}`, {
         headers: {
           Authorization: `Bearer ${window.authManager.getToken()}`
@@ -161,10 +183,11 @@ class CollaborationApp {
         // Join board via socket
         window.socketManager.joinBoard(boardId);
         
-        // Load only elements that belong to this board
-        if (board.elements) {
-          window.canvasManager.loadElements(board.elements);
-        }
+        // Update canvas with board elements
+        window.canvasManager.loadElements(board.elements || []);
+        
+        // Update board-specific controls
+        this.updateBoardControls();
       } else {
         throw new Error('Failed to load board');
       }
@@ -231,6 +254,7 @@ class CollaborationApp {
   enableControls() {
     this.boardSelect.disabled = false;
     this.newBoardBtn.disabled = false;
+    this.updateBoardControls();
   }
 
   /**
@@ -239,6 +263,8 @@ class CollaborationApp {
   disableControls() {
     this.boardSelect.disabled = true;
     this.newBoardBtn.disabled = true;
+    this.inviteUserBtn.disabled = true;
+    this.deleteBoardBtn.disabled = true;
   }
 
   /**
@@ -257,6 +283,110 @@ class CollaborationApp {
    */
   handleWindowClose() {
     this.disconnect();
+  }
+  
+  /**
+   * Show invite user modal
+   */
+  showInviteModal() {
+    if (!this.currentBoard) return;
+    
+    this.inviteUserModal.style.display = 'flex';
+    document.getElementById('inviteEmail').value = '';
+    document.getElementById('inviteEmail').focus();
+  }
+  
+  /**
+   * Handle invite user form submission
+   * @param {Event} e - Form submit event
+   */
+  async handleInviteUser(e) {
+    e.preventDefault();
+    
+    if (!this.currentBoard) return;
+    
+    const email = document.getElementById('inviteEmail').value;
+    const role = document.getElementById('inviteRole').value;
+    
+    try {
+      const response = await fetch(`/api/boards/${this.currentBoard.id}/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${window.authManager.getToken()}`
+        },
+        body: JSON.stringify({ email, role })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        alert(`Successfully invited ${email} to the board`);
+        this.inviteUserModal.style.display = 'none';
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to invite user');
+      }
+    } catch (error) {
+      console.error('Error inviting user:', error);
+      alert('Failed to invite user');
+    }
+  }
+  
+  /**
+   * Delete current board
+   */
+  async deleteCurrentBoard() {
+    if (!this.currentBoard) return;
+    
+    const confirmDelete = confirm(`Are you sure you want to delete "${this.currentBoard.name}"? This action cannot be undone.`);
+    if (!confirmDelete) return;
+    
+    try {
+      const response = await fetch(`/api/boards/${this.currentBoard.id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${window.authManager.getToken()}`
+        }
+      });
+      
+      if (response.ok) {
+        alert('Board deleted successfully');
+        
+        // Leave the board
+        window.socketManager.disconnect();
+        
+        // Clear current board
+        this.currentBoard = null;
+        
+        // Reload boards list
+        await this.loadUserBoards();
+        
+        // If no boards left, show the board selection modal
+        const boards = await this.getUserBoards();
+        if (boards.length === 0) {
+          this.boardSelectionModal.style.display = 'flex';
+        }
+      } else {
+        const error = await response.json();
+        alert(error.error || 'Failed to delete board');
+      }
+    } catch (error) {
+      console.error('Error deleting board:', error);
+      alert('Failed to delete board');
+    }
+  }
+  
+  /**
+   * Update board-specific controls
+   */
+  updateBoardControls() {
+    const hasBoard = !!this.currentBoard;
+    
+    this.inviteUserBtn.disabled = !hasBoard;
+    this.deleteBoardBtn.disabled = !hasBoard;
+    
+    // You might want to add logic here to check user permissions
+    // For example, only allow deletion if user is the owner
   }
 }
 

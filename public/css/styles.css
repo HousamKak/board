@@ -83,7 +83,7 @@ body {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-#newBoardBtn {
+#newBoardBtn, #inviteUserBtn {
   padding: 8px 16px;
   background: linear-gradient(to right, #3b82f6, #2563eb);
   color: white;
@@ -95,13 +95,41 @@ body {
   transition: all 0.2s ease;
 }
 
-#newBoardBtn:hover {
+#newBoardBtn:hover, #inviteUserBtn:hover {
   background: linear-gradient(to right, #2563eb, #1d4ed8);
   transform: translateY(-1px);
 }
 
-#newBoardBtn:active {
+#newBoardBtn:active, #inviteUserBtn:active {
   transform: translateY(0);
+}
+
+#deleteBoardBtn {
+  padding: 8px 16px;
+  background-color: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+#deleteBoardBtn:hover {
+  background-color: #b91c1c;
+  transform: translateY(-1px);
+}
+
+#deleteBoardBtn:active {
+  transform: translateY(0);
+}
+
+#deleteBoardBtn:disabled {
+  background-color: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .user-info {
@@ -247,7 +275,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: transparent;
+  background-color: #f0f2f5;
   overflow: hidden;
 }
 

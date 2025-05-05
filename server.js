@@ -79,6 +79,80 @@ const authMiddleware = (req, res, next) => {
 };
 
 // API Routes
+
+/**
+ * Invite user to board endpoint
+ * @route POST /api/boards/:boardId/invite
+ */
+app.post('/api/boards/:boardId/invite', authMiddleware, async (req, res) => {
+    try {
+        const { boardId } = req.params;
+        const { email, role = 'editor' } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        // Check if user has permission to invite others
+        const board = await db.getBoard(boardId);
+        if (!board) {
+            return res.status(404).json({ error: 'Board not found' });
+        }
+
+        const inviter = await db.getBoardMember(boardId, req.user.userId);
+        if (!inviter || (inviter.role !== 'owner' && inviter.role !== 'admin')) {
+            return res.status(403).json({ error: 'Only owners and admins can invite users' });
+        }
+
+        // Check if user exists
+        const invitee = await db.getUserByEmail(email);
+        if (!invitee) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check if user is already a member
+        const existingMember = await db.getBoardMember(boardId, invitee.id);
+        if (existingMember) {
+            return res.status(400).json({ error: 'User is already a member of this board' });
+        }
+
+        // Add user to board
+        await db.addBoardMember(boardId, invitee.id, role);
+
+        res.json({ 
+            message: 'User invited successfully',
+            userId: invitee.id,
+            email: invitee.email,
+            role: role
+        });
+    } catch (error) {
+        console.error('Invite user error:', error);
+        res.status(500).json({ error: 'Failed to invite user' });
+    }
+});
+
+/**
+ * Delete board endpoint
+ * @route DELETE /api/boards/:boardId
+ */
+app.delete('/api/boards/:boardId', authMiddleware, async (req, res) => {
+    try {
+        const { boardId } = req.params;
+
+        // Check if user has permission to delete the board
+        const member = await db.getBoardMember(boardId, req.user.userId);
+        if (!member || member.role !== 'owner') {
+            return res.status(403).json({ error: 'Only the board owner can delete it' });
+        }
+
+        await db.deleteBoard(boardId);
+        res.json({ message: 'Board deleted successfully' });
+    } catch (error) {
+        console.error('Delete board error:', error);
+        res.status(500).json({ error: 'Failed to delete board' });
+    }
+});
+
 /**
  * User registration endpoint
  * @route POST /api/register
@@ -184,6 +258,12 @@ app.get('/api/boards/:boardId', authMiddleware, async (req, res) => {
             return res.status(404).json({ error: 'Board not found' });
         }
 
+        // Check if user has access to the board
+        const hasAccess = await db.checkBoardAccess(boardId, req.user.userId);
+        if (!hasAccess) {
+            return res.status(403).json({ error: 'You do not have access to this board' });
+        }
+
         const elements = await db.getBoardElements(boardId);
         res.json({ ...board, elements });
     } catch (error) {
@@ -208,6 +288,13 @@ io.on('connection', (socket) => {
 
             if (!boardId || !user) {
                 throw new Error('Missing required data');
+            }
+
+            // Check if user has access to the board
+            const hasAccess = await db.checkBoardAccess(boardId, user.userId);
+            if (!hasAccess) {
+                socket.emit('error', { message: 'You do not have access to this board' });
+                return;
             }
 
             socket.join(boardId);

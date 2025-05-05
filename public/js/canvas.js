@@ -33,17 +33,8 @@ class CanvasManager {
     const canvasElement = document.getElementById('mainCanvas');
     this.canvas = new fabric.Canvas(canvasElement, {
       width: window.innerWidth,
-      height: window.innerHeight - 60,
-      backgroundColor: '#f9faf9', // Light paper color
-      overlayImage: 'data:image/svg+xml;utf8,' + encodeURIComponent(`
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
-          <pattern id="paper" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="0.5" fill="#cccccb" opacity="0.1"/>
-            <circle cx="11" cy="11" r="0.5" fill="#cccccb" opacity="0.1"/>
-          </pattern>
-          <rect width="20" height="20" fill="url(#paper)"/>
-        </svg>
-      `)
+      height: window.innerHeight - 50,
+      backgroundColor: '#f8f9fa'
     });
 
     // Enable object selection and multi-touch
@@ -52,9 +43,6 @@ class CanvasManager {
     
     // Add infinite canvas behavior
     this.setupInfiniteCanvas();
-
-    // Enable double-click support
-    this.setupDoubleClick();
   }
 
   /**
@@ -102,30 +90,6 @@ class CanvasManager {
       opt.e.preventDefault();
       opt.e.stopPropagation();
       this.updateZoomLevel();
-    });
-  }
-
-  /**
-   * Enable double-click support
-   */
-  setupDoubleClick() {
-    let lastPointerDownTarget = null;
-    let lastClickTime = 0;
-    const doubleClickTime = 300; // milliseconds
-
-    this.canvas.on('mouse:down', (opt) => {
-      lastPointerDownTarget = opt.target;
-    });
-
-    this.canvas.on('mouse:up', (opt) => {
-      const now = Date.now();
-      const timeDiff = now - lastClickTime;
-      
-      if (timeDiff < doubleClickTime && lastPointerDownTarget === opt.target) {
-        this.canvas.fire('mouse:dblclick', { target: opt.target, e: opt.e });
-      }
-      
-      lastClickTime = now;
     });
   }
 
@@ -197,13 +161,6 @@ class CanvasManager {
     window.socketManager.on('element-updated', (element) => this.handleRemoteElementUpdated(element));
     window.socketManager.on('element-deleted', (elementId) => this.handleRemoteElementDeleted(elementId));
     window.socketManager.on('load-elements', (elements) => this.loadElements(elements));
-
-    // Add double-click event handler
-    this.canvas.on('mouse:dblclick', (options) => {
-      if (options.target && options.target.data?.type === 'task') {
-        this.editElement(options.target);
-      }
-    });
   }
 
   /**
@@ -351,6 +308,9 @@ class CanvasManager {
     // Emit element creation
     this.emitElementCreate(element);
     this.elements.set(id, element);
+    
+    // Automatically switch to select tool after creating an element
+    this.setTool('select');
   }
 
   /**
@@ -383,9 +343,7 @@ class CanvasManager {
       fontSize: 18,
       fontWeight: '600',
       fill: '#1a202c',
-      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
-      editable: true,
-      hasControls: false
+      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif'
     });
 
     const description = new fabric.Text('Click to edit description', {
@@ -394,9 +352,7 @@ class CanvasManager {
       width: 250,
       fontSize: 14,
       fill: '#4a5568',
-      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
-      editable: true,
-      hasControls: false
+      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif'
     });
 
     const status = new fabric.Text('To Do', {
@@ -848,9 +804,7 @@ class CanvasManager {
       fontSize: 18,
       fontWeight: '600',
       fill: '#1a202c',
-      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
-      editable: true,
-      hasControls: false
+      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif'
     });
 
     const description = new fabric.Text(data.content.description, {
@@ -859,9 +813,7 @@ class CanvasManager {
       width: 250,
       fontSize: 14,
       fill: '#4a5568',
-      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif',
-      editable: true,
-      hasControls: false
+      fontFamily: '"Segoe UI", system-ui, -apple-system, sans-serif'
     });
 
     const status = new fabric.Text(this.getStatusText(data.content.status), {
@@ -990,10 +942,6 @@ class CanvasManager {
   handleObjectModified(options) {
     const target = options.target;
     if (target && target.data?.id) {
-      // Update content for sticky notes
-      if (target.data.type === 'sticky') {
-        target.data.content.text = target.text;
-      }
       this.emitElementUpdate(target);
     }
   }

@@ -332,6 +332,120 @@ function deleteElement(elementId) {
   });
 }
 
+/**
+ * Check if user has access to board
+ * @param {string} boardId - Board ID
+ * @param {string} userId - User ID
+ * @returns {Promise<boolean>} Access status
+ */
+function checkBoardAccess(boardId, userId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT 1 FROM board_members WHERE board_id = ? AND user_id = ?',
+      [boardId, userId],
+      (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(!!row);
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Get board member details
+ * @param {string} boardId - Board ID
+ * @param {string} userId - User ID
+ * @returns {Promise<Object|null>} Member object or null
+ */
+function getBoardMember(boardId, userId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM board_members WHERE board_id = ? AND user_id = ?',
+      [boardId, userId],
+      (err, row) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(row || null);
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Add board member
+ * @param {string} boardId - Board ID
+ * @param {string} userId - User ID
+ * @param {string} role - User role
+ * @returns {Promise<void>}
+ */
+function addBoardMember(boardId, userId, role) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO board_members (board_id, user_id, role) VALUES (?, ?, ?)',
+      [boardId, userId, role],
+      function(err) {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Delete board and all related data
+ * @param {string} boardId - Board ID
+ * @returns {Promise<void>}
+ */
+function deleteBoard(boardId) {
+  return new Promise((resolve, reject) => {
+    db.run('BEGIN TRANSACTION', (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      
+      // Delete in order of dependencies
+      const queries = [
+        'DELETE FROM connectors WHERE board_id = ?',
+        'DELETE FROM elements WHERE board_id = ?',
+        'DELETE FROM board_members WHERE board_id = ?',
+        'DELETE FROM boards WHERE id = ?'
+      ];
+      
+      let completed = 0;
+      
+      queries.forEach(query => {
+        db.run(query, [boardId], (err) => {
+          if (err) {
+            db.run('ROLLBACK');
+            reject(err);
+            return;
+          }
+          
+          completed++;
+          if (completed === queries.length) {
+            db.run('COMMIT', (err) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve();
+              }
+            });
+          }
+        });
+      });
+    });
+  });
+}
+
 module.exports = {
   createUser,
   getUserByEmail,
@@ -341,5 +455,9 @@ module.exports = {
   getBoardElements,
   createElement,
   updateElement,
-  deleteElement
+  deleteElement,
+  checkBoardAccess,
+  getBoardMember,
+  addBoardMember,
+  deleteBoard
 };
