@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaboration Board</title>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.1/socket.io.js"></script>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-left">
+            <h1 class="logo">Collaboration Board</h1>
+            <div class="board-select">
+                <select id="boardSelect" disabled>
+                    <option value="">Select Board</option>
+                </select>
+                <button id="newBoardBtn" disabled>New Board</button>
+            </div>
+        </div>
+        
+        <div class="nav-right">
+            <div class="user-info" style="display: none;">
+                <span id="userName"></span>
+                <button id="logoutBtn">Logout</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Tool Panel -->
+    <div class="tool-panel">
+        <div class="tool-group">
+            <button class="tool-btn active" data-tool="select" title="Select">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                    <path d="M3 3l7 7v7l3-3V10l7-7z"/>
+                </svg>
+            </button>
+            <button class="tool-btn" data-tool="sticky" title="Sticky Note">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                    <rect x="4" y="4" width="16" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M9 9h6M9 13h3" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </button>
+            <button class="tool-btn" data-tool="task" title="Task Card">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                    <rect x="3" y="4" width="18" height="17" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                    <path d="M7 8h10M7 12h7M7 16h5" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </button>
+            <button class="tool-btn" data-tool="connector" title="Connect Elements">
+                <svg width="20" height="20" viewBox="0 0 24 24">
+                    <circle cx="5" cy="5" r="2" fill="currentColor"/>
+                    <circle cx="19" cy="19" r="2" fill="currentColor"/>
+                    <path d="M7 7l10 10" stroke="currentColor" stroke-width="2"/>
+                </svg>
+            </button>
+        </div>
+        
+        <div class="zoom-controls">
+            <button id="zoomOutBtn" title="Zoom Out">-</button>
+            <span id="zoomLevel">100%</span>
+            <button id="zoomInBtn" title="Zoom In">+</button>
+            <button id="resetZoomBtn" title="Reset Zoom">⌂</button>
+        </div>
+    </div>
+
+    <!-- Main Canvas Container -->
+    <div class="canvas-container">
+        <canvas id="mainCanvas"></canvas>
+        
+        <!-- Multi-cursor Layer -->
+        <div class="cursor-layer"></div>
+        
+        <!-- Context Menu -->
+        <div id="contextMenu" class="context-menu">
+            <ul>
+                <li data-action="edit">Edit</li>
+                <li data-action="color">Change Color</li>
+                <li data-action="delete">Delete</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    
+    <!-- Login/Register Modal -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <h2>Welcome to Collaboration Board</h2>
+            
+            <div class="auth-tabs">
+                <button class="auth-tab active" data-tab="login">Login</button>
+                <button class="auth-tab" data-tab="register">Register</button>
+            </div>
+            
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="loginEmail">Email</label>
+                    <input type="email" id="loginEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" required>
+                </div>
+                <button type="submit" class="submit-btn">Login</button>
+            </form>
+            
+            <form id="registerForm" class="auth-form" style="display: none;">
+                <div class="form-group">
+                    <label for="registerName">Name</label>
+                    <input type="text" id="registerName" required>
+                </div>
+                <div class="form-group">
+                    <label for="registerEmail">Email</label>
+                    <input type="email" id="registerEmail" required>
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password</label>
+                    <input type="password" id="registerPassword" required>
+                </div>
+                <button type="submit" class="submit-btn">Register</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Board Creation Modal -->
+    <div id="boardModal" class="modal">
+        <div class="modal-content">
+            <h2>Create New Board</h2>
+            <form id="boardForm">
+                <div class="form-group">
+                    <label for="boardName">Board Name</label>
+                    <input type="text" id="boardName" required>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="cancel-btn" data-modal="boardModal">Cancel</button>
+                    <button type="submit" class="submit-btn">Create</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Task Editor Modal -->
+    <div id="taskEditorModal" class="modal">
+        <div class="modal-content">
+            <h2>Edit Task</h2>
+            <form id="taskForm">
+                <input type="hidden" id="taskId">
+                <div class="form-group">
+                    <label for="taskTitle">Title</label>
+                    <input type="text" id="taskTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="taskDescription">Description</label>
+                    <textarea id="taskDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="taskAssignee">Assignee</label>
+                    <input type="text" id="taskAssignee">
+                </div>
+                <div class="form-group">
+                    <label for="taskDueDate">Due Date</label>
+                    <input type="date" id="taskDueDate">
+                </div>
+                <div class="form-group">
+                    <label for="taskStatus">Status</label>
+                    <select id="taskStatus">
+                        <option value="todo">To Do</option>
+                        <option value="inprogress">In Progress</option>
+                        <option value="done">Done</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="cancel-btn" data-modal="taskEditorModal">Cancel</button>
+                    <button type="submit" class="submit-btn">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Color Picker Modal -->
+    <div id="colorPickerModal" class="modal">
+        <div class="modal-content">
+            <h2>Choose Color</h2>
+            <div class="color-grid">
+                <div class="color-option" data-color="#ffe066"></div>
+                <div class="color-option" data-color="#feb2b2"></div>
+                <div class="color-option" data-color="#63b3ed"></div>
+                <div class="color-option" data-color="#68d391"></div>
+                <div class="color-option" data-color="#b794f4"></div>
+                <div class="color-option" data-color="#fc8181"></div>
+                <div class="color-option" data-color="#f687b3"></div>
+                <div class="color-option" data-color="#4fd1c5"></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="cancel-btn" data-modal="colorPickerModal">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/auth.js"></script>
+    <script src="js/socketClient.js"></script>
+    <script src="js/canvas.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
